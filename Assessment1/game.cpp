@@ -63,6 +63,42 @@ public:
 
 };
 
+class projectile {
+public:
+    GamesEngineeringBase::Image image;
+    int x, y;
+    int power;
+    projectile(string filename, int _x, int _y, int p) {
+        image.load("Resources/" + filename + ".png");
+        x = _x;
+        y = _y;
+        power = p;
+    }
+
+    void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {
+        for (int i = 0; i < image.width; i++) {
+            if (i + x - wx - image.width / 2 >= 0 && i + x - wx - image.width / 2 < canvasX) {
+                for (int j = 0; j < image.height; j++) {
+                    if (j + y - wy - image.height / 2 >= 0 && j + y - wy - image.height / 2 < canvasY) {
+                        canvas.draw(i + x - wx - image.width / 2, j + y - wy - image.height / 2, image.atUnchecked(i, j));
+                    }
+                }
+            }
+        }
+    }
+
+    void update(int ox, int oy) {
+        if (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)) > 50) {
+            x += 2 * (ox - x) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
+            y += 2 * (oy - y) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
+        }
+
+        if (x <= 0) x = 0;
+        if (y <= 0) y = 0;
+        if (x >= worldWidth) x = worldWidth;
+        if (y >= worldHeight) y = worldHeight;
+    }
+};
 
 const int canvasX = 1024;
 const int canvasY = 768;
@@ -122,7 +158,7 @@ public:
     //}
 
     void update(int hx, int hy) {
-        if (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) != 0) {
+        if (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) > 50) {
             x += 2 * (hx - x) / (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)));
             y += 2 * (hy - y) / (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)));
         }
@@ -157,8 +193,6 @@ public:
         for (int i = 0; i < currentSize;i++) {
             if (enemy[i] != nullptr) {
                 enemy[i]->update(hx, hy);
-                if (i == 3)
-                    cout << enemy[i]->x << "\t" << enemy[i]->y << "\n";
             }
         }
     }
