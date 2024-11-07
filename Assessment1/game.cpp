@@ -122,15 +122,15 @@ public:
     //}
 
     void update(int hx, int hy) {
-        if (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) != 0) {
+        if (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) > 60) {
             x += 2 * (hx - x) / (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)));
             y += 2 * (hy - y) / (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)));
         }
 
-        if (x <= 0) x = 0;
-        if (y <= 0) y = 0;
-        if (x >= worldWidth) x = worldWidth;
-        if (y >= worldHeight) y = worldHeight;
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x > worldWidth) x = worldWidth;
+        if (y > worldHeight) y = worldHeight;
     }
 };
 
@@ -157,8 +157,8 @@ public:
         for (int i = 0; i < currentSize;i++) {
             if (enemy[i] != nullptr) {
                 enemy[i]->update(hx, hy);
-                if (i == 3)
-                    cout << enemy[i]->x << "\t" << enemy[i]->y << "\n";
+                /*if (i == 3)
+                    cout << enemy[i]->x << "\t" << enemy[i]->y << "\n";*/
             }
         }
     }
@@ -427,6 +427,9 @@ int main() {
 
     Swarm s;
     camera cam(h, w, s);
+
+    int i = -2*-2;
+    cout << i;
 
     while (running)
     {
