@@ -1,6 +1,7 @@
 #include <iostream>
 #include "GamesEngineeringBase.h"
-#include<fstream>
+#include <fstream>
+#include <random>
 
 using namespace std;
 
@@ -18,24 +19,114 @@ public:
     }
 };
 
+class timeCount {
+public:
+    float timeElapsed;
+    float timeThreshold;
+
+    timeCount(){
+        timeElapsed = 0.f;
+    }
+
+    void set(float t) {
+        timeThreshold = t;
+    }
+
+    bool count(float dt) {
+        timeElapsed += dt;
+        if (timeElapsed > timeThreshold) {
+            timeElapsed = 0; 
+            return true;
+        }
+        return false;
+    }
+};
+
 int worldWidth = 1344;
 int worldHeight = 1344;
+const unsigned int bulletSize = 100;
+const int canvasX = 1024;
+const int canvasY = 768;
+
+class projectile {
+public:
+    GamesEngineeringBase::Image image;
+    int x, y;
+    int ox, oy;
+    int power;
+    projectile(string filename, int _x, int _y, int p, int _ox, int _oy) {
+        image.load("Resources/" + filename + ".png");
+        x = _x;
+        y = _y;
+        power = p;
+        ox = _ox;
+        oy = _oy;
+    }
+
+    void checkCollide() {
+
+    }
+
+    void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {
+        for (int i = 0; i < image.width; i++) {
+            if (i + x - wx - image.width / 2 >= 0 && i + x - wx - image.width / 2 < canvasX) {
+                for (int j = 0; j < image.height; j++) {
+                    if (j + y - wy - image.height / 2 >= 0 && j + y - wy - image.height / 2 < canvasY) {
+                        if (image.alphaAt(i, j) > 100)
+                            canvas.draw(i + x - wx - image.width / 2, j + y - wy - image.height / 2, image.atUnchecked(i, j));
+                    }
+                }
+            }
+        }
+    }
+
+    void update() {
+        if (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)) > 5) {
+            x += 2 * (ox - x) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
+            y += 2 * (oy - y) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
+        }
+    }
+};
+
 class Hero : public sprite {
 public:
     int x, y;
-
+    unsigned int currentBullet = 0;
+    projectile* bullets[bulletSize];
     Hero() {
         HP = 40;
         x = 0;
         y = 0;
-        image.load("Resources/L.png");
+        image.load("Resources/hero.png");
     }
 
     Hero(int _HP, int _x, int _y) {
         HP = _HP;
         x = _x;
         y = _y;
-        image.load("Resources/L.png");
+        image.load("Resources/hero.png");
+    }
+
+    void checkForDelete() {
+        for (int i = 0; i < currentBullet;i++) {
+            if (bullets[i] != nullptr) {
+                if (sqrt((bullets[i]->x - bullets[i]->ox) * (bullets[i]->x - bullets[i]->ox) + (bullets[i]->y - bullets[i]->oy) * (bullets[i]->y - bullets[i]->oy)) <= 5) {
+                    bullets[i] = nullptr;
+                }
+            }  
+        }
+    }
+
+
+    void linearAttack(int ox, int oy) {
+        if (currentBullet < bulletSize) {
+            projectile* p = new projectile("heroBullet", x, y, 3, ox, oy);
+            bullets[currentBullet++] = p;
+        }
+    }
+
+    void aoeAttack(int ox, int oy) {
+
     }
 
     void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {
@@ -49,6 +140,14 @@ public:
                 }
             }
         }
+
+        for (int n = 0; n < currentBullet; n++)
+            if (bullets[n] != nullptr)
+                bullets[n]->draw(canvas, wx, wy);
+        for (int m = 0; m < currentBullet; m++)
+            if (bullets[m] != nullptr)
+                bullets[m]->update();
+        checkForDelete();
     }
 
     void update(GamesEngineeringBase::Window& canvas, int _x, int _y) {
@@ -63,45 +162,6 @@ public:
 
 };
 
-class projectile {
-public:
-    GamesEngineeringBase::Image image;
-    int x, y;
-    int power;
-    projectile(string filename, int _x, int _y, int p) {
-        image.load("Resources/" + filename + ".png");
-        x = _x;
-        y = _y;
-        power = p;
-    }
-
-    void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {
-        for (int i = 0; i < image.width; i++) {
-            if (i + x - wx - image.width / 2 >= 0 && i + x - wx - image.width / 2 < canvasX) {
-                for (int j = 0; j < image.height; j++) {
-                    if (j + y - wy - image.height / 2 >= 0 && j + y - wy - image.height / 2 < canvasY) {
-                        canvas.draw(i + x - wx - image.width / 2, j + y - wy - image.height / 2, image.atUnchecked(i, j));
-                    }
-                }
-            }
-        }
-    }
-
-    void update(int ox, int oy) {
-        if (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)) > 50) {
-            x += 2 * (ox - x) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
-            y += 2 * (oy - y) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
-        }
-
-        if (x <= 0) x = 0;
-        if (y <= 0) y = 0;
-        if (x >= worldWidth) x = worldWidth;
-        if (y >= worldHeight) y = worldHeight;
-    }
-};
-
-const int canvasX = 1024;
-const int canvasY = 768;
 class NPC : public sprite {
 public:
     int x;
@@ -122,7 +182,8 @@ public:
             if (i + x - wx - image.width / 2 >= 0 && i + x - wx - image.width / 2 < canvasX) {
                 for (int j = 0; j < image.height; j++) {
                     if (j + y - wy - image.height / 2 >= 0 && j + y - wy - image.height / 2 < canvasY) {
-                        canvas.draw(i + x - wx - image.width/2, j + y - wy - image.height/2, image.atUnchecked(i, j));
+                        if (image.alphaAt(i, j) > 200)
+                            canvas.draw(i + x - wx - image.width/2, j + y - wy - image.height/2, image.atUnchecked(i, j));
                         //cout << i + x - image.width / 2 << "\n";
                     }
                 }
@@ -158,7 +219,7 @@ public:
     //}
 
     void update(int hx, int hy) {
-        if (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) != 0) {
+        if (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) > 20) {
             x += 2 * (hx - x) / (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)));
             y += 2 * (hy - y) / (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)));
         }
@@ -168,19 +229,31 @@ public:
         if (x > worldWidth) x = worldWidth;
         if (y > worldHeight) y = worldHeight;
     }
+
+    float distanceTo(int hx, int hy) {
+        return sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy));
+    }
+
+    bool melee(Hero& h, int hx, int hy) {
+        return sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) <= 20;
+    }
 };
 
-const unsigned int maxEnemyNum = 5;
+const unsigned int maxEnemyNum = 100;
 class Swarm {
 public:
-    NPC* enemy[maxEnemyNum]{nullptr};
+    NPC* enemy[maxEnemyNum];
     unsigned int currentSize = 0;
+    int position = 1;
+    timeCount t;
+
     Swarm(){}
 
-    void generateNPC() {
+    void generateNPC(int cx, int cy, float dt) {
         if (currentSize < maxEnemyNum) {
-            NPC* n = new NPC(10, "L2", rand()%500, rand()%500);
+            NPC* n = new NPC(10, "npc1", (cx + 528) * position, rand() % 800 - 400);
             enemy[currentSize++] = n;
+            position = -1 * position;
         }
     }
 
@@ -188,13 +261,14 @@ public:
 
     }
 
-    void update(int hx, int hy) {
-        generateNPC();
+    void update(int hx, int hy, int cx, int cy, float dt) {
+        t.set(1.f);
+        if (t.count(dt)) {
+            generateNPC(cx, cy, dt);
+        }
         for (int i = 0; i < currentSize;i++) {
             if (enemy[i] != nullptr) {
                 enemy[i]->update(hx, hy);
-                if (i == 3)
-                    cout << enemy[i]->x << "\t" << enemy[i]->y << "\n";
             }
         }
     }
@@ -205,8 +279,6 @@ public:
                 enemy[i]->draw(canvas, wx, wy);
         }
     }
-
-    
 };
 
 const unsigned int imageSize = 32;
@@ -411,38 +483,97 @@ public:
 class camera {
 public:
     int x, y;
-    Hero hero;
+    Hero* hero;
     world w;
-    Swarm swarm;
+    Swarm* swarm;
+    timeCount ht;
+
     camera(Hero& _hero, world& _w, Swarm& _s) {
-        hero = _hero;
+        hero = &_hero;
         w = _w;
-        swarm = _s;
-        x = hero.x;
-        y = hero.y;
+        swarm = &_s;
+        x = hero->x;
+        y = hero->y;
     }
 
-    void draw(GamesEngineeringBase::Window& canvas) {
+    int checkClosestNPC() {
+        float closest = 0.f;
+        int current = 0;
+        for (int i = 0; i < swarm->currentSize; i++) {
+            if (swarm->enemy[i] != nullptr) {
+                float n = swarm->enemy[i]->distanceTo(hero->x, hero->y);
+                if (n > closest) {
+                    closest = n;
+                    current = i;
+                }
+            }            
+        }
+        return current;
+    }
+
+    void heroAttack(float dt) {
+        int closest = checkClosestNPC();
+        cout << closest << "\n";
+        ht.set(2.f);
+        for (int i = 0; i < swarm->currentSize;i++) {
+            if (swarm->enemy[i] != nullptr) {
+                if (ht.count(dt)) {
+                    hero->linearAttack(swarm->enemy[closest]->x, swarm->enemy[closest]->y);
+                }
+            }
+        }
+    }
+
+    void NPCgetAttack() {
+        for (int i = 0; i < swarm->currentSize; i++) {
+            if (swarm->enemy[i] != nullptr) {
+                for (int j = 0; j < hero->currentBullet; j++) {
+                    if (hero->bullets[j] != nullptr) {
+                        if (swarm->enemy[i]->distanceTo(hero->bullets[j]->x, hero->bullets[j]->y) <= 20) {
+                            swarm->enemy[i] = nullptr;
+                            hero->bullets[j] = nullptr;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    void heroGetAttack() {
+        for (int i = 0; i < swarm->currentSize;i++) {
+            if (swarm->enemy[i] != nullptr) {
+                if (swarm->enemy[i]->melee(*hero, hero->x, hero->y)) {
+                    hero->takeDamage(2);
+                    swarm->enemy[i] = nullptr;
+                }
+            } 
+        }
+    }
+
+    void draw(GamesEngineeringBase::Window& canvas, float dt) {
         int xOffset = x - canvasX / 2;
         int yOffset = y - canvasY / 2;
+        /*NPCgetAttack();*/
         w.draw(canvas, xOffset, yOffset);
-        hero.draw(canvas, xOffset, yOffset);
-        swarm.draw(canvas, xOffset, yOffset);
-        swarm.update(hero.x, hero.y);
+        hero->draw(canvas, xOffset, yOffset);
+        swarm->draw(canvas, xOffset, yOffset);
+        swarm->update(hero->x, hero->y, x, y, dt);
+        heroAttack(dt);
+        heroGetAttack();
+        
     }
 
     void update(GamesEngineeringBase::Window& canvas, int _x, int _y) {
-        hero.update(canvas, _x, _y);
-        x = hero.x;
-        y = hero.y;
+        hero->update(canvas, _x, _y);
+        x = hero->x;
+        y = hero->y;
 
         if (x < canvas.getWidth() / 2) x = canvas.getWidth() / 2;
         if (y < canvas.getHeight() / 2) y = canvas.getHeight() / 2;
         if (x > worldWidth - canvas.getWidth() / 2) x = worldWidth - canvas.getWidth() / 2;
         if (y > worldWidth - canvas.getHeight() / 2) y = worldWidth - canvas.getHeight() / 2;
     }
-
-
+    
 };
 
 int main() {
@@ -454,18 +585,12 @@ int main() {
     GamesEngineeringBase::Timer tim;
 
     Hero h(40,512,384);
-    //int x = 0;
-    //int y = 0;
     NPC n(10, "L2", 100, 100);
-    //preTiles pp;
     
     world w("tiles");
 
     Swarm s;
     camera cam(h, w, s);
-
-    int i = -2*-2;
-    cout << i;
 
     while (running)
     {
@@ -476,14 +601,16 @@ int main() {
         canvas.clear();
 
         float dt = tim.dt();
+        
 
         if (canvas.keyPressed('W')) cam.update(canvas, 0, -3);
         if (canvas.keyPressed('A')) cam.update(canvas, -3, 0);
         if (canvas.keyPressed('S')) cam.update(canvas, 0, 3);
         if (canvas.keyPressed('D')) cam.update(canvas, 3, 0);
-        
-        cam.draw(canvas);
-        
+        if (canvas.keyPressed('Q')) cam.heroAttack(dt);
+
+        cam.draw(canvas, dt);
+
         // Display the frame on the screen. This must be called once the frame is finished in order to display the frame.
         canvas.present();
         
