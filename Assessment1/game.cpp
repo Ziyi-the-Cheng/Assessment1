@@ -7,6 +7,7 @@ using namespace std;
 
 class sprite {
 public:
+    int x, y;
     int HP;
     GamesEngineeringBase::Image image;
 
@@ -23,6 +24,7 @@ class timeCount {
 public:
     float timeElapsed;
     float timeThreshold;
+    bool ready = true;
 
     timeCount(){
         timeElapsed = 0.f;
@@ -40,6 +42,16 @@ public:
         }
         return false;
     }
+
+    void coolDown(float dt) {
+        if (!ready) {
+            timeElapsed += dt;
+            if (timeElapsed > timeThreshold) {
+                timeElapsed = 0;
+                ready = true;
+            }
+        }
+    }
 };
 
 int worldWidth = 1344;
@@ -54,6 +66,7 @@ public:
     int x, y;
     int ox, oy;
     int power;
+    int xs, ys;
     projectile(string filename, int _x, int _y, int p, int _ox, int _oy) {
         image.load("Resources/" + filename + ".png");
         x = _x;
@@ -61,10 +74,14 @@ public:
         power = p;
         ox = _ox;
         oy = _oy;
+        xs = 2 * (ox - x) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
+        ys = 2 * (oy - y) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
     }
 
-    void checkCollide() {
-
+    bool checkCollide(sprite& s) {
+        if (sqrt((x - s.x) * (x - s.x) + (y - s.y) * (y - s.y)) < 10)
+            return true;
+        return false;
     }
 
     void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {
@@ -82,22 +99,23 @@ public:
 
     void update() {
         if (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)) > 5) {
-            x += 2 * (ox - x) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
-            y += 2 * (oy - y) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
+            x += xs;
+            y += ys;
         }
     }
 };
 
 class Hero : public sprite {
 public:
-    int x, y;
     unsigned int currentBullet = 0;
     projectile* bullets[bulletSize];
+    timeCount fireCoolDown;
     Hero() {
         HP = 40;
         x = 0;
         y = 0;
         image.load("Resources/hero.png");
+        fireCoolDown.set(3.f);
     }
 
     Hero(int _HP, int _x, int _y) {
@@ -105,6 +123,7 @@ public:
         x = _x;
         y = _y;
         image.load("Resources/hero.png");
+        fireCoolDown.set(3.f);
     }
 
     void checkForDelete() {
@@ -118,15 +137,17 @@ public:
     }
 
 
-    void linearAttack(int ox, int oy) {
-        if (currentBullet < bulletSize) {
-            projectile* p = new projectile("heroBullet", x, y, 3, ox, oy);
-            bullets[currentBullet++] = p;
+    void linearAttack(int ox, int oy, float dt) {
+        if (fireCoolDown.count(dt)) {
+            if (currentBullet < bulletSize) {
+                projectile* p = new projectile("heroBullet", x, y, 3, ox, oy);
+                bullets[currentBullet++] = p;
+            }
         }
     }
 
-    void aoeAttack(int ox, int oy) {
-
+    void aoeAttack() {
+        
     }
 
     void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {
@@ -164,8 +185,6 @@ public:
 
 class NPC : public sprite {
 public:
-    int x;
-    int y;
 
     //NPC(Hero& h):hero(h){}
     NPC() {}
@@ -231,7 +250,7 @@ public:
     }
 
     float distanceTo(int hx, int hy) {
-        return sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy));
+        return sqrt(((float)x - (float)hx) * ((float)x - (float)hx) + ((float)y - (float)hy) * ((float)y - (float)hy));
     }
 
     bool melee(Hero& h, int hx, int hy) {
@@ -262,7 +281,7 @@ public:
     }
 
     void update(int hx, int hy, int cx, int cy, float dt) {
-        t.set(1.f);
+        t.set(4.f);
         if (t.count(dt)) {
             generateNPC(cx, cy, dt);
         }
@@ -487,6 +506,7 @@ public:
     world w;
     Swarm* swarm;
     timeCount ht;
+    timeCount aoeCoolDown;
 
     camera(Hero& _hero, world& _w, Swarm& _s) {
         hero = &_hero;
@@ -494,6 +514,15 @@ public:
         swarm = &_s;
         x = hero->x;
         y = hero->y;
+        aoeCoolDown.set(3.f);
+    }
+
+    bool swarmEmpty() {
+        for (int i = 0; i < swarm->currentSize;i++) {
+            if (swarm->enemy[i] != nullptr)
+                return false;
+        }
+        return true;
     }
 
     int checkClosestNPC() {
@@ -511,29 +540,31 @@ public:
         return current;
     }
 
-    void heroAttack(float dt) {
-        int closest = checkClosestNPC();
-        cout << closest << "\n";
-        ht.set(2.f);
-        for (int i = 0; i < swarm->currentSize;i++) {
-            if (swarm->enemy[i] != nullptr) {
-                if (ht.count(dt)) {
-                    hero->linearAttack(swarm->enemy[closest]->x, swarm->enemy[closest]->y);
-                }
+    bool inAOErange(NPC& n) {
+        return n.distanceTo(x, y) < 300.f;
+    }
+
+    void aoeAttack() {
+        if (aoeCoolDown.ready) {
+            for (int i = 0;i < swarm->currentSize;i++) {
+                if (swarm->enemy[i] != nullptr)
+                    if (inAOErange(*swarm->enemy[i])) {
+                        swarm->enemy[i]->takeDamage(15);
+                        if (!swarm->enemy[i]->checkForLive())
+                            swarm->enemy[i] = nullptr;
+                    }
             }
+            aoeCoolDown.ready = false;
         }
     }
 
-    void NPCgetAttack() {
-        for (int i = 0; i < swarm->currentSize; i++) {
-            if (swarm->enemy[i] != nullptr) {
-                for (int j = 0; j < hero->currentBullet; j++) {
-                    if (hero->bullets[j] != nullptr) {
-                        if (swarm->enemy[i]->distanceTo(hero->bullets[j]->x, hero->bullets[j]->y) <= 20) {
-                            swarm->enemy[i] = nullptr;
-                            hero->bullets[j] = nullptr;
-                        }
-                    }
+    void heroAttack(float dt) {
+        if (!swarmEmpty()) {
+            int closest = checkClosestNPC();
+            for (int i = 0; i < swarm->currentSize;i++) {
+                if (swarm->enemy[i] != nullptr) {
+                    //cout << swarm->enemy[closest]->x << "\t" << swarm->enemy[closest]->y << "\n";
+                    hero->linearAttack(swarm->enemy[closest]->x, swarm->enemy[closest]->y, dt);
                 }
             }
         }
@@ -543,30 +574,57 @@ public:
         for (int i = 0; i < swarm->currentSize;i++) {
             if (swarm->enemy[i] != nullptr) {
                 if (swarm->enemy[i]->melee(*hero, hero->x, hero->y)) {
-                    hero->takeDamage(2);
+                    hero->takeDamage(20);
                     swarm->enemy[i] = nullptr;
                 }
             } 
         }
     }
 
-    void draw(GamesEngineeringBase::Window& canvas, float dt) {
+    void NPCgetAttack() {
+        int bullet = 0;
+        int npc = 0;
+        for (int i = 0;i < hero->currentBullet;i++) {
+            if (hero->bullets[i] != nullptr) {
+                for (int j = 0;j < swarm->currentSize;j++) {
+                    if (swarm->enemy[j] != nullptr) {
+                        float a = hero->bullets[i]->x - swarm->enemy[j]->x;
+                        float b = hero->bullets[i]->y - swarm->enemy[j]->y;
+                        float distance = sqrtf(a * a + b * b);
+                        if (distance < 15) {
+                            bullet = i;
+                            swarm->enemy[j]->takeDamage(hero->bullets[i]->power);
+                            if (!swarm->enemy[j]->checkForLive())
+                                swarm->enemy[j] = nullptr;
+                        }
+                    }
+                }
+            }
+        }
+        hero->bullets[bullet] = nullptr;
+    }
+
+    void draw(GamesEngineeringBase::Window& canvas) {
         int xOffset = x - canvasX / 2;
         int yOffset = y - canvasY / 2;
         /*NPCgetAttack();*/
         w.draw(canvas, xOffset, yOffset);
         hero->draw(canvas, xOffset, yOffset);
         swarm->draw(canvas, xOffset, yOffset);
-        swarm->update(hero->x, hero->y, x, y, dt);
-        heroAttack(dt);
-        heroGetAttack();
+        
         
     }
 
-    void update(GamesEngineeringBase::Window& canvas, int _x, int _y) {
-        hero->update(canvas, _x, _y);
+    void update(GamesEngineeringBase::Window& canvas, float dt) {
         x = hero->x;
         y = hero->y;
+        swarm->update(hero->x, hero->y, x, y, dt);
+        heroAttack(dt);
+        heroGetAttack();
+        NPCgetAttack();
+        aoeCoolDown.coolDown(dt);
+        //cout << aoeCoolDown.timeElapsed << "\n";
+        
 
         if (x < canvas.getWidth() / 2) x = canvas.getWidth() / 2;
         if (y < canvas.getHeight() / 2) y = canvas.getHeight() / 2;
@@ -603,13 +661,15 @@ int main() {
         float dt = tim.dt();
         
 
-        if (canvas.keyPressed('W')) cam.update(canvas, 0, -3);
-        if (canvas.keyPressed('A')) cam.update(canvas, -3, 0);
-        if (canvas.keyPressed('S')) cam.update(canvas, 0, 3);
-        if (canvas.keyPressed('D')) cam.update(canvas, 3, 0);
-        if (canvas.keyPressed('Q')) cam.heroAttack(dt);
+        if (canvas.keyPressed('W')) h.update(canvas, 0, -3);
+        if (canvas.keyPressed('A')) h.update(canvas, -3, 0);
+        if (canvas.keyPressed('S')) h.update(canvas, 0, 3);
+        if (canvas.keyPressed('D')) h.update(canvas, 3, 0);
+        if (canvas.keyPressed('Q')) cam.aoeAttack();
 
-        cam.draw(canvas, dt);
+        cam.draw(canvas);
+        cam.update(canvas, dt);
+        if (!h.checkForLive()) break;
 
         // Display the frame on the screen. This must be called once the frame is finished in order to display the frame.
         canvas.present();
