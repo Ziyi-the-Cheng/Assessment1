@@ -20,6 +20,20 @@ public:
     }
 };
 
+class vec {
+    int x, y;
+    vec(int _x, int _y) {
+        x = _x;
+        y = _y;
+    }
+
+    float distanceTo(vec input) {
+        float a = (x - input.x) * (x - input.x);
+        float b = (y - input.y) * (y - input.y);
+        return sqrtf(a + b);
+    }
+};
+
 class timeCount {
 public:
     float timeElapsed;
@@ -79,7 +93,7 @@ public:
     }
 
     bool checkCollide(sprite& s) {
-        if (sqrt((x - s.x) * (x - s.x) + (y - s.y) * (y - s.y)) < 10)
+        if (sqrt((x - s.x) * (x - s.x) + (y - s.y) * (y - s.y)) < 15)
             return true;
         return false;
     }
@@ -185,11 +199,26 @@ public:
 
 class NPC : public sprite {
 public:
+    unsigned int currentBullet = 0;
+    projectile* bullets[bulletSize];
+    timeCount fireCoolDown;
+    virtual void update(int x, int y, float dt) {};
+    virtual void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {};
+    float distanceTo(int hx, int hy) {
+        return sqrt(((float)x - (float)hx) * ((float)x - (float)hx) + ((float)y - (float)hy) * ((float)y - (float)hy));
+    }
+    bool melee(int hx, int hy) {
+        return sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) <= 20;
+    }
+};
+
+class meleeNPC : public NPC {
+public:
 
     //NPC(Hero& h):hero(h){}
-    NPC() {}
+    meleeNPC() {}
 
-    NPC(int hp, string filename, int _x, int _y) {
+    meleeNPC(int hp, string filename, int _x, int _y) {
         HP = hp;
         image.load("Resources/" + filename + ".png");
         x = _x;
@@ -237,7 +266,7 @@ public:
     //    return 0;
     //}
 
-    void update(int hx, int hy) {
+    void update(int hx, int hy, float dt) {
         if (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) > 20) {
             x += 2 * (hx - x) / (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)));
             y += 2 * (hy - y) / (sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)));
@@ -248,17 +277,77 @@ public:
         if (x > worldWidth) x = worldWidth;
         if (y > worldHeight) y = worldHeight;
     }
+};
 
-    float distanceTo(int hx, int hy) {
-        return sqrt(((float)x - (float)hx) * ((float)x - (float)hx) + ((float)y - (float)hy) * ((float)y - (float)hy));
+class rangeNPC : public NPC {
+public:
+    
+
+    rangeNPC() {}
+    rangeNPC(int hp, string filename, int _x, int _y) {
+        HP = hp;
+        image.load("Resources/" + filename + ".png");
+        x = _x;
+        y = _y;
+        fireCoolDown.set(2.f);
     }
 
-    bool melee(Hero& h, int hx, int hy) {
-        return sqrt((x - hx) * (x - hx) + (y - hy) * (y - hy)) <= 20;
+    void checkForDelete() {
+        for (int i = 0; i < currentBullet;i++) {
+            if (bullets[i] != nullptr) {
+                if (sqrt((bullets[i]->x - bullets[i]->ox) * (bullets[i]->x - bullets[i]->ox) + (bullets[i]->y - bullets[i]->oy) * (bullets[i]->y - bullets[i]->oy)) <= 5) {
+                    bullets[i] = nullptr;
+                }
+            }
+        }
+    }
+
+    void rangeAttack(int ox, int oy) {
+        if (currentBullet < bulletSize) {
+            projectile* p = new projectile("NPCbullet", x, y, 3, ox, oy);
+            bullets[currentBullet++] = p;
+        }
+    }
+
+    void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {
+        for (int i = 0; i < image.width; i++) {
+            if (i + x - wx - image.width / 2 >= 0 && i + x - wx - image.width / 2 < canvasX) {
+                for (int j = 0; j < image.height; j++) {
+                    if (j + y - wy - image.height / 2 >= 0 && j + y - wy - image.height / 2 < canvasY) {
+                        if (image.alphaAt(i, j) > 200)
+                            canvas.draw(i + x - wx - image.width / 2, j + y - wy - image.height / 2, image.atUnchecked(i, j));
+                        //cout << i + x - image.width / 2 << "\n";
+                    }
+                }
+            }
+        }
+
+        for (int n = 0; n < currentBullet; n++)
+            if (bullets[n] != nullptr)
+                bullets[n]->draw(canvas, wx, wy);
+        for (int m = 0; m < currentBullet; m++)
+            if (bullets[m] != nullptr)
+                bullets[m]->update();
+        checkForDelete();
+    }
+
+    void update (int ox, int oy, float dt) override{
+        if (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)) > 350) {
+            x += 2 * (ox - x) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
+            y += 2 * (oy - y) / (sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy)));
+        }
+
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x > worldWidth) x = worldWidth;
+        if (y > worldHeight) y = worldHeight;
+        if (fireCoolDown.count(dt)) {
+            rangeAttack(ox, oy);
+        }
     }
 };
 
-const unsigned int maxEnemyNum = 100;
+const unsigned int maxEnemyNum = 10;
 class Swarm {
 public:
     NPC* enemy[maxEnemyNum];
@@ -270,8 +359,12 @@ public:
 
     void generateNPC(int cx, int cy, float dt) {
         if (currentSize < maxEnemyNum) {
-            NPC* n = new NPC(10, "npc1", (cx + 528) * position, rand() % 800 - 400);
-            enemy[currentSize++] = n;
+            meleeNPC* n = new meleeNPC(10, "npc1", (cx + 528) * position, rand() % 800 - 400);
+            rangeNPC* r = new rangeNPC(10, "npc2", (cx + 528) * position, rand() % 800 - 400);
+            if (rand() % 10 < 3)
+                enemy[currentSize++] = r;
+            else 
+                enemy[currentSize++] = n;
             position = -1 * position;
         }
     }
@@ -287,7 +380,7 @@ public:
         }
         for (int i = 0; i < currentSize;i++) {
             if (enemy[i] != nullptr) {
-                enemy[i]->update(hx, hy);
+                enemy[i]->update(hx, hy, dt);
             }
         }
     }
@@ -332,10 +425,13 @@ public:
 
 class tile {
     GamesEngineeringBase::Image sprite;
+    bool passable = true;
 public:
     tile() {}
     void load(string filename) {
         sprite.load(filename);
+        if (filename == "14" || filename == "15" || filename == "16" || filename == "17" || filename == "18" || filename == "19" || filename == "20" || filename == "21" || filename == "22")
+            passable = false;
     }
     void draw(GamesEngineeringBase::Window& canvas,int x, int y) {
         for (unsigned int i = 0; i < sprite.width; i++)
@@ -347,6 +443,7 @@ public:
     unsigned int getHeight() { return sprite.height; }
     unsigned int getWidth() { return sprite.width; }
     GamesEngineeringBase::Image& getSprite() { return sprite; }
+    bool getPassable() { return passable; }
 };
 
 const unsigned int tileNum = 24;
@@ -405,10 +502,6 @@ public:
 
     void draw(GamesEngineeringBase::Window& canvas, int wx, int wy) {
         int length = 32;
-        int X = wx / length;
-        int Y = wy / length;
-        int x = wx % length;
-        int y = wy % length;
         for (int i = 0; i < mapWidth;i++) {
             for (int j = 0; j < mapHeight;j++) {
                 tiles[map[i][j]].draw(canvas, j * length - wx, i * length - wy);
@@ -416,8 +509,15 @@ public:
         }
 
     }
+
+    //Check if the tile at hero's position is passable;
+    bool collide(int hx, int hy) {
+        //Get the corresponding tile at hero position
+        int X = hx / imageSize; 
+        int Y = hy / imageSize;
+        return tiles[map[X][Y]].getPassable();
+    }
 };
-//////////////////////////////////////////////
 
 class preTiles {
 public:
@@ -507,6 +607,7 @@ public:
     Swarm* swarm;
     timeCount ht;
     timeCount aoeCoolDown;
+    
 
     camera(Hero& _hero, world& _w, Swarm& _s) {
         hero = &_hero;
@@ -569,11 +670,26 @@ public:
             }
         }
     }
+
+    void npcRangeAttack() {
+        for (int i = 0; i < swarm->currentSize;i++) {
+            if (swarm->enemy[i] != nullptr) {
+                for (int j = 0;j < swarm->enemy[i]->currentBullet;j++) {
+                    if (swarm->enemy[i]->bullets[j] != nullptr) {
+                        if (swarm->enemy[i]->bullets[j]->checkCollide(*hero)) {
+                            hero->takeDamage(swarm->enemy[i]->bullets[j]->power);
+                            swarm->enemy[i]->bullets[j] = nullptr;
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     void heroGetAttack() {
         for (int i = 0; i < swarm->currentSize;i++) {
             if (swarm->enemy[i] != nullptr) {
-                if (swarm->enemy[i]->melee(*hero, hero->x, hero->y)) {
+                if (swarm->enemy[i]->melee(hero->x, hero->y)) {
                     hero->takeDamage(20);
                     swarm->enemy[i] = nullptr;
                 }
@@ -583,7 +699,6 @@ public:
 
     void NPCgetAttack() {
         int bullet = 0;
-        int npc = 0;
         for (int i = 0;i < hero->currentBullet;i++) {
             if (hero->bullets[i] != nullptr) {
                 for (int j = 0;j < swarm->currentSize;j++) {
@@ -604,6 +719,12 @@ public:
         hero->bullets[bullet] = nullptr;
     }
 
+    void heroCollide() {
+        if (w.collide(x, y)) {
+
+        }
+    }
+
     void draw(GamesEngineeringBase::Window& canvas) {
         int xOffset = x - canvasX / 2;
         int yOffset = y - canvasY / 2;
@@ -616,22 +737,20 @@ public:
     }
 
     void update(GamesEngineeringBase::Window& canvas, float dt) {
-        x = hero->x;
+        x = hero->x; //Update camera coordinates
         y = hero->y;
         swarm->update(hero->x, hero->y, x, y, dt);
         heroAttack(dt);
         heroGetAttack();
         NPCgetAttack();
+        npcRangeAttack();
         aoeCoolDown.coolDown(dt);
-        //cout << aoeCoolDown.timeElapsed << "\n";
         
-
         if (x < canvas.getWidth() / 2) x = canvas.getWidth() / 2;
         if (y < canvas.getHeight() / 2) y = canvas.getHeight() / 2;
         if (x > worldWidth - canvas.getWidth() / 2) x = worldWidth - canvas.getWidth() / 2;
         if (y > worldWidth - canvas.getHeight() / 2) y = worldWidth - canvas.getHeight() / 2;
     }
-    
 };
 
 int main() {
@@ -643,10 +762,8 @@ int main() {
     GamesEngineeringBase::Timer tim;
 
     Hero h(40,512,384);
-    NPC n(10, "L2", 100, 100);
-    
+    meleeNPC n(10, "L2", 100, 100);
     world w("tiles");
-
     Swarm s;
     camera cam(h, w, s);
 
@@ -669,13 +786,11 @@ int main() {
 
         cam.draw(canvas);
         cam.update(canvas, dt);
+        
         if (!h.checkForLive()) break;
-
         // Display the frame on the screen. This must be called once the frame is finished in order to display the frame.
         canvas.present();
-        
     }
-
 }
 
 
